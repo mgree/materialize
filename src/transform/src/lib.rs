@@ -518,6 +518,17 @@ impl Optimizer {
         let transforms: Vec<Box<dyn crate::Transform>> = vec![
             // Delete unnecessary maps.
             Box::new(crate::fusion::Fusion),
+            // Expose literals (which may have only become accessible after optimize_dataflow_demand)
+/*            Box::new(crate::Fixpoint {
+                limit: 100,
+                transforms: vec![
+                    // Converts `Cross Join {Constant(Literal) + Input}` to
+                    // `Map {Cross Join (Input, Constant()), Literal}`.
+                    // Join fusion will clean this up to `Map{Input, Literal}`
+                    Box::new(crate::literal_lifting::LiteralLifting::default()),
+                    Box::new(crate::FuseAndCollapse::default()),
+                ],
+            }), */
             Box::new(crate::Fixpoint {
                 limit: 100,
                 transforms: vec![

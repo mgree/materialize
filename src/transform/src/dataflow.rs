@@ -41,7 +41,8 @@ pub fn optimize_dataflow(
     inline_views(dataflow)?;
 
     // Logical optimization pass after view inlining
-    optimize_dataflow_relations(dataflow, indexes, &Optimizer::logical_optimizer())?;
+    let logical_optimizer = Optimizer::logical_optimizer();
+    optimize_dataflow_relations(dataflow, indexes, &logical_optimizer)?;
 
     optimize_dataflow_filters(dataflow)?;
     // TODO: when the linear operator contract ensures that propagated
@@ -52,8 +53,8 @@ pub fn optimize_dataflow(
     // the filters are applied.
     optimize_dataflow_demand(dataflow)?;
 
-    // rerun the logical optimizer to catch things exposed by the demand analysis
-    optimize_dataflow_relations(dataflow, indexes, &Optimizer::logical_optimizer())?;
+    // rerun the optimizer to take advantage of demand changes
+    optimize_dataflow_relations(dataflow, indexes, &logical_optimizer)?;
 
     // A smaller logical optimization pass after projections and filters are
     // pushed down across views.
