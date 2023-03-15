@@ -52,6 +52,9 @@ pub fn optimize_dataflow(
     // the filters are applied.
     optimize_dataflow_demand(dataflow)?;
 
+    // rerun the logical optimizer to catch things exposed by the demand analysis
+    optimize_dataflow_relations(dataflow, indexes, &Optimizer::logical_optimizer())?;
+
     // A smaller logical optimization pass after projections and filters are
     // pushed down across views.
     optimize_dataflow_relations(dataflow, indexes, &Optimizer::logical_cleanup_pass())?;
