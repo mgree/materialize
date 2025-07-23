@@ -7,7 +7,7 @@
 
 == TODO
 
- - $mono("null")$ and $mono("coalesce")$.
+ - $mono("null")$ and $mono("coalesce")$. (Default $mono("null")$-lifting semantics, with a special case. Probably want an $mono("is-null")$ predicate, too.)
  - Counts in semantics.
  - $"TopK"$ for its weird ordering/complement issues.
 
@@ -42,28 +42,34 @@ $\
 #err in "Errors" ::= mono("NoSuchColumn") | mono("TypeError") | mono("DivisionByZero")
 $
 
-== Rows
+== Rows and counts
 
 A _row_ is a tuple $t$ of constants, of arity 0 or higher:
 
 $\
-t in "Rows" = (c_1, ...)
+t in "Rows" = (c_0, ..., c_n)
 $
 
 We write the empty row as $()$.
 
 == Databases and outputs
 
-A _database_ is a partial map from table names $T in "Tables"$ to rows:
+A _bag element_ $E$ is a row with a non-zero count:
 
-$\
-"DB" : "Tables" harpoon.rt "Rows"
+$
+E in "Elements" = (t, z \in (bb(Z)^- union.plus bb(Z)^+))
 $
 
-An _output_ is either a set of rows ${ t_1, ..., t_n } subset.eq "Rows"$ or an error $#err$.
+A _database_ is a partial map from table names $T in "Tables"$ to a set of bag elements:
 
 $\
-o in "Outputs" = { t_1, ... t_n } | #err
+"DB" : "Tables" harpoon.rt "Elements"
+$
+
+An _output_ is either a set of rows ${ t_0, ..., t_n } subset.eq "Rows"$ or an error $#err$.
+
+$\
+o in "Outputs" = { (t_0, z_0), ... (t_n, z_0) } | #err
 $
 
 = Scalar Expressions
@@ -135,31 +141,35 @@ $
 
 == Scalar Expressions
 
-Scalar expressions operator row-by-row, taking a row and yielding a set of possible outputs, i.e., a set of values and errors. Each is a possible output of that scalar on that tuple.
+Scalar expressions operate row-by-row, taking a row and yielding a set of possible outputs, i.e., a set of values and errors (@scalar-semantics). Each result in the set is a possible output of that scalar on that tuple.
 
-$[|e|] : "Row" -> cal(P)("Constants" union.plus "Errors")$
+#figure(
+  [#align(left)[#box(inset: (x: 0.25em, y:0.25em), outset: (x: 0em, y: 0.25em), stroke: 1pt, $[|e|] : "Row" -> cal(P)("Constants" union.plus "Errors")$)]
 
-$\
-[|c|](t)      &=&& { (c) } \
+   $\
+   [|c|](t)      &=&& { c } \
 
-[|col(i)|](t) &=&& { c_i | t = (c_0, ..., c_n) } union \
-               &&& {mono("NoSuchColumn") | t = (c_0, ..., c_n) and n < i} \
+   [|col(i)|](t) &=&& { c_i | t = (c_0, ..., c_n) } union \
+                  &&& {mono("NoSuchColumn") | t = (c_0, ..., c_n) and n < i} \
 
-[|times.circle e|](t)  &=&& { times.circle c | c in [|e|](t) inter dom(times.circle)} union \
-                        &&& {mono("TypeError") | c in [|e|](t) backslash dom(times.circle)} union \
-                        &&& {#err | #err in [|e|](t)} \
+   [|times.circle e|](t)  &=&& { times.circle c | c in [|e|](t) inter dom(times.circle)} union \
+                           &&& {mono("TypeError") | c in [|e|](t) backslash dom(times.circle)} union \
+                           &&& {#err | #err in [|e|](t)} \
 
 
-[|e_1 times.circle e_2|](t)  &=&& { c_1 times.circle c_2 | c_1 in [|e_1|](t) inter dom(times.circle)_1 and c_2 in [|e_2|](t) inter dom(times.circle)_2 } union \
-                     &&& {mono("TypeError") | c_1 in [|e_1|](t) backslash dom(times.circle)_1 } union \
-                     &&& {mono("TypeError") | c_2 in [|e_2|](t) backslash dom(times.circle)_2 } union \
-                     &&& {#err | #err in [|e_1|](t)} union {#err | #err in [|e_2|](t)} \
+   [|e_1 times.circle e_2|](t)  &=&& { c_1 times.circle c_2 | c_1 in [|e_1|](t) inter dom(times.circle)_1 and c_2 in [|e_2|](t) inter dom(times.circle)_2 } union \
+                        &&& {mono("TypeError") | c_1 in [|e_1|](t) backslash dom(times.circle)_1 } union \
+                        &&& {mono("TypeError") | c_2 in [|e_2|](t) backslash dom(times.circle)_2 } union \
+                        &&& {#err | #err in [|e_1|](t)} union {#err | #err in [|e_2|](t)} \
 
-[|ite(e_"cond",e_"then",e_"else")|](t) &=&& { o | o in [|e_"then"|](t) and #t in [|e_"cond"|](t) } union \
-                                        &&& { o | o in [|e_"else"|](t) and #f in [|e_"cond"|](t) } union \
-                                        &&& { mono("TypeError") | c in [|e_"cond"|] backslash bb(B) } union \
-                                        &&& { #err | #err in [|e_"cond"|](t)} \
-$
+   [|ite(e_"cond",e_"then",e_"else")|](t) &=&& { r | r in [|e_"then"|](t) and #t in [|e_"cond"|](t) } union \
+                                           &&& { r | r in [|e_"else"|](t) and #f in [|e_"cond"|](t) } union \
+                                           &&& { mono("TypeError") | c in [|e_"cond"|] backslash bb(B) } union \
+                                           &&& { #err | #err in [|e_"cond"|](t)} \
+   $
+  ],
+  caption: [Scalar expressions are denoted as functions from tuples to sets of constants and errors.],
+) <scalar-semantics>
 
 Note that $[|e_1 div e_2|]$ can produce $mono("DivideByZero")$ in the $c_1 div c_2$ case, in addition to the usual $mono("TypeError")$ (and propagated errors from $e_1$ and $e_2$).
 
