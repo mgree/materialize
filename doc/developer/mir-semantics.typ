@@ -9,6 +9,10 @@
 
  - No recursion (yet).
 
+ - We take the order of relation expressions as fixed---but SQL has a
+   much more open-minded view of when different parts of the query are
+   evaluated.
+
 == TODO
 
  - $mono("null")$ and $mono("coalesce")$. (Default
@@ -199,6 +203,15 @@ Scalar expressions operate row-by-row, taking a row and yielding a set of possib
 
 Note that $[|e_1 div e_2|]$ can produce #DivisionByZero in the $c_1 div c_2$ case, in addition to the usual #TypeError (and propagated errors from $e_1$ and $e_2$).
 
+Binary operations are our primary source of nondeterminism. Consider the following scalar expression:
+
+$
+e colon.eq not (col(0) == 0) and (col(1) div col(0) == 10)
+$
+
+One might think that this expression is safe: we require that $col(0)$ is non-zero, so it's okay to use it as a divisor.
+But evaluation order is not fixed: we return $#err in [|e_2|](t)$ independently of $e_1$, so $#DivisionByZero in [|e|]((0, 0))$, because $#DivisionByZero in [|(col(1) div col(0) == 10)|]((0, 0))$, because $#DivisionByZero in [|col(1) div col(0)|]((0,0))$.
+
 == Table Functions
 
 A table function takes a row $t$ and returns an output, i.e., a bag or an error.
@@ -211,11 +224,11 @@ $\
 $
 ],
  caption: [Table functions are denoted as functions from tuple to sets of outputs.],
-) <table-functions>
+) <table-semantics>
 
 == Relation Expressions
 
-A relation takes a database $"DB"$ (i.e., a mapping from table names to rows) and produces an _output_
+A relation takes a database $"DB"$ (i.e., a mapping from table names to rows) and produces an _output_.
 
 #figure(
   [#align(left)[#box(inset: (x: 0.25em, y:0.25em), outset: (x: 0em, y: 0.25em), stroke: 1pt, $[|R|] : "DB" -> cal(P)("Outputs")$)]
@@ -288,8 +301,32 @@ $
 ],
 caption: [Relation expressions are denoted as functions from databases to sets of (sets of) rows and errors. Note that we do not assign a semantics for variables, which are substituted out at their $mono("let")$-definition site.],) <relation-semantics>
 
-= Correctness criteria for transformations
+= Properties of the Semantics
 
-== Scalar expressions
+The semantics defined above (@scalar-semantics, @table-semantics, @relation-semantics) are non-deterministic, returning sets of results and errors. We expect them to be deterministic on non-error results.
 
-We say that $phi : "Scalar" arrow "Scalar"$ is _sound_ when for all scalar expressions $e$ and rows $t$, $[|phi(e)|](t) subset.eq [|e|](t)$.
+*Conjecture: scalar functions are deterministic up to errors.* For all scalar functions $e$ and rows $t$, if $c_1, c_2 in [|e|](t)$, then $c_1 = c_2$.
+
+*Conjecture: table functions are deterministic up to errors.* For all table functions $t_f$ and rows $t$, if $B_1, B_2 in [|t_f|](t)$ then $B_1 = B_2$.
+
+*Conjecture: relation expressions functions are deterministic up to errors.* For all relation expressions $R$ and databases $d$, if $B_1, B_2 in [|R|](d)$ then $B_1 = B_2$.
+
+That is, we can think of each syntactic form denoting zero or one answers (constants for scalars, bags for table functions and relation expressions) and zero or more errors.
+
+= Correctness Criteria for Evaluation Strategies
+
+#let eval(R, d) = $mono("eval")(#R, #d)$
+
+We have defined nondeterministic specifications of behavior, but they are not evaluation strategies. That is $[|R|]$ is a mathematical function, not code.
+
+An evaluation strategy for relation expressions is a computable function that takes a relation expression and a database to an output, i.e., $mono("eval") : "Relations" times "DB" arrow "Outputs"$.
+
+We say an evaluation function $mono("eval")$ is sound when it only produces valid behaviors, i.e., for all databases $d$ we have that $eval(R, d) subset.eq [|R|](d)$.
+
+= Correctness Criteria for Transformations
+
+Sound transformations are exactly refinements: transformations that may narrow behavior---but not introduce new behaviors.
+
+We say that scalar-expression transform $phi : "Scalars" arrow "Scalars"$ is _sound_ when for all scalar expressions $e$ and rows $t$, $[|phi(e)|](t) subset.eq [|e|](t)$.
+
+Similarly, a relation-expression transformation $psi : "Relations" arrow "Relations"$ is _sound_ when for all relation expressions $R$ and databases $d$, $[|psi(R)|](d) subset.eq [|R|](d)$.
