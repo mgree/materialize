@@ -1,20 +1,27 @@
 = Simplifying assumptions
 
  - Just bools and unbounded integers.
- - All joins are binary inner joins with a single predicate; all unions are binary.
+
+ - All joins are binary inner joins with a single predicate; all
+   unions are binary.
+
  - We use $"Distinct"$ to stand in for general reductions and top-K.
+
  - No recursion (yet).
 
 == TODO
 
- - $mono("null")$ and $mono("coalesce")$. (Default $mono("null")$-lifting semantics, with a special case. Probably want an $mono("is-null")$ predicate, too.)
- - Counts in semantics.
+ - $mono("null")$ and $mono("coalesce")$. (Default
+   $mono("null")$-lifting semantics, with a special case. Probably
+   want an $mono("is-null")$ predicate, too.)
+
  - $"TopK"$ for its weird ordering/complement issues.
 
+= Syntax
 
-= Values
+== Values
 
-== Constants
+=== Constants
 
 #let null = math.mono("null")
 #let t = math.mono("true")
@@ -33,16 +40,18 @@ c in "Constants" ::=
 $
 
 
-
-== Errors
+=== Errors
 
 #let err = $mono("err")$
+#let NoSuchColumn = $mono("NoSuchColumn")$
+#let TypeError = $mono("TypeError")$
+#let DivisionByZero = $mono("DivisionByZero")$
 
 $\
-#err in "Errors" ::= mono("NoSuchColumn") | mono("TypeError") | mono("DivisionByZero")
+#err in "Errors" ::= #NoSuchColumn | #TypeError | #DivisionByZero
 $
 
-== Rows and counts
+=== Rows and counts
 
 A _row_ is a tuple $t$ of constants, of arity 0 or higher:
 
@@ -52,27 +61,44 @@ $
 
 We write the empty row as $()$.
 
-== Databases and outputs
+=== Databases and outputs
 
-A _bag element_ $E$ is a row with a non-zero count:
+A _bag_ $B in "Bags"$ is modeled by its characteristic counting function:
 
 $
-E in "Elements" = (t, z \in (bb(Z)^- union.plus bb(Z)^+))
+B : "Rows" arrow bb(Z)
 $
 
-A _database_ is a partial map from table names $T in "Tables"$ to a set of bag elements:
+We define the usual bag operations:
+
+ - The _domain_ of a bag $"dom"(B) = { t in "Rows" | B(t) != 0 }$ is
+   the set of elements with a non-zero count. We write $B(t) = z$ as a
+   proposition to bind both $t$ and $z$---noting that $z$ binds to 0
+   when $t$ is not in the bag $B$.
+
+ - The _union_ of two bags combines the counts: $(B_1 union B_2)(t) = B_1(t) + B_2(t)$.
+
+ - We use the bag-builder notation $B = { t mapsto z | P }$ to create
+   the bag $B$ that maps $t$ to $z$ when $P$ holds, and to 0
+   otherwise, i.e., $B(t') = cases(z & "when" t = t' and P, 0 & "otherwise")$.
+
+An _output_ is either a bag or an error $#err$.
 
 $\
-"DB" : "Tables" harpoon.rt "Elements"
+o in "Outputs" = B | #err
 $
 
-An _output_ is either a set of rows ${ t_0, ..., t_n } subset.eq "Rows"$ or an error $#err$.
+#let normalize(o) = $mono("normalize")(#o)$
+
+A _database_ is a map from table names $T in "Tables"$ to "Bags":
 
 $\
-o in "Outputs" = { (t_0, z_0), ... (t_n, z_0) } | #err
+"DB" : "Tables" arrow "Bags"
 $
 
-= Scalar Expressions
+If a table isn't defined, we map it to the empty bag.
+
+== Scalar Expressions
 
 #let col(n) = $mono("#") #n$
 #let ite(c, t, e) = $mono("if") #c mono("then") #t mono("else") #e$
@@ -94,7 +120,7 @@ $\
 typeof(not) &=& bb(B) arrow & bb(B) \
 typeof(and) = typeof(or) &=& bb(B) times bb(B) arrow & bb(B) \
 typeof(+) = typeof(-) = typeof(*) &=& bb(Z) times bb(Z) arrow & bb(Z) \
-typeof(div) &=& bb(Z) times bb(Z) arrow & bb(Z) union {mono("DivideByZero")} \
+typeof(div) &=& bb(Z) times bb(Z) arrow & bb(Z) union {#DivisionByZero} \
 typeof(==) = typeof(<) &=& bb(Z) times bb(Z) arrow & bb(B) \
 $
 
@@ -108,7 +134,7 @@ $\
 f_t && ::= & generateseries(z_"from", z_"to") \
 $
 
-= Relation Expressions
+== Relation Expressions
 
 #let Let(x, binding, body) = $mono("let") x = binding mono("in") body$
 #let Map(R, e) = $"Map"(#R, #e)$
@@ -150,38 +176,117 @@ Scalar expressions operate row-by-row, taking a row and yielding a set of possib
    [|c|](t)      &=&& { c } \
 
    [|col(i)|](t) &=&& { c_i | t = (c_0, ..., c_n) } union \
-                  &&& {mono("NoSuchColumn") | t = (c_0, ..., c_n) and n < i} \
+                  &&& {#NoSuchColumn | t = (c_0, ..., c_n) and n < i} \
 
    [|times.circle e|](t)  &=&& { times.circle c | c in [|e|](t) inter dom(times.circle)} union \
-                           &&& {mono("TypeError") | c in [|e|](t) backslash dom(times.circle)} union \
+                           &&& {#TypeError | c in [|e|](t) backslash dom(times.circle)} union \
                            &&& {#err | #err in [|e|](t)} \
 
 
    [|e_1 times.circle e_2|](t)  &=&& { c_1 times.circle c_2 | c_1 in [|e_1|](t) inter dom(times.circle)_1 and c_2 in [|e_2|](t) inter dom(times.circle)_2 } union \
-                        &&& {mono("TypeError") | c_1 in [|e_1|](t) backslash dom(times.circle)_1 } union \
-                        &&& {mono("TypeError") | c_2 in [|e_2|](t) backslash dom(times.circle)_2 } union \
+                        &&& {#TypeError | c_1 in [|e_1|](t) backslash dom(times.circle)_1 } union \
+                        &&& {#TypeError | c_2 in [|e_2|](t) backslash dom(times.circle)_2 } union \
                         &&& {#err | #err in [|e_1|](t)} union {#err | #err in [|e_2|](t)} \
 
    [|ite(e_"cond",e_"then",e_"else")|](t) &=&& { r | r in [|e_"then"|](t) and #t in [|e_"cond"|](t) } union \
                                            &&& { r | r in [|e_"else"|](t) and #f in [|e_"cond"|](t) } union \
-                                           &&& { mono("TypeError") | c in [|e_"cond"|] backslash bb(B) } union \
+                                           &&& { #TypeError | c in [|e_"cond"|] backslash bb(B) } union \
                                            &&& { #err | #err in [|e_"cond"|](t)} \
    $
   ],
   caption: [Scalar expressions are denoted as functions from tuples to sets of constants and errors.],
 ) <scalar-semantics>
 
-Note that $[|e_1 div e_2|]$ can produce $mono("DivideByZero")$ in the $c_1 div c_2$ case, in addition to the usual $mono("TypeError")$ (and propagated errors from $e_1$ and $e_2$).
+Note that $[|e_1 div e_2|]$ can produce #DivisionByZero in the $c_1 div c_2$ case, in addition to the usual #TypeError (and propagated errors from $e_1$ and $e_2$).
+
+== Table Functions
+
+A table function takes a row $t$ and returns an output, i.e., a bag or an error.
+
+#figure(
+ [#align(left)[#box(inset: (x: 0.25em, y:0.25em), outset: (x: 0em, y: 0.25em), stroke: 1pt, $[|t_f|] : "Row" -> cal(P)("Outputs")$)]
+
+$\
+[|generateseries(z_"from", z_"to")|]((c_0, dots, c_n)) = { (c_0, dots, c_n,z) mapsto 1 | z_"from" <= z <= z_"to" }
+$
+],
+ caption: [Table functions are denoted as functions from tuple to sets of outputs.],
+) <table-functions>
 
 == Relation Expressions
 
 A relation takes a database $"DB"$ (i.e., a mapping from table names to rows) and produces an _output_
 
-$[|R|] : "DB" -> cal(P)("Outputs")$
+#figure(
+  [#align(left)[#box(inset: (x: 0.25em, y:0.25em), outset: (x: 0em, y: 0.25em), stroke: 1pt, $[|R|] : "DB" -> cal(P)("Outputs")$)]
 
 $\
-[|{t_0, ... t_n}|](d) = { {t_0, ... t_n} }
+[|{t_0, ... t_n}|](d) &=&& { { t_i mapsto 1 | 0 <= i <= n } } \
+
+[|T|](d) &=&& { d(T) } \
+
+[|Let(x, R_1, R_2)|](d) &=&&
+  { #err | #err in [|R_1|](d) } union
+    union.big_(B in [|R_1|](d)) [|R_2[x mapsto B]|](d) \
+
+[|Map(R, e)|](d) &=&&
+  { #err | #err in [|R|](d) } union \ &&&
+    union.big_(B in [|R|](d))
+      { #err | t in dom(B) and [|e|](t) = err} union \ &&&
+    union.big_(B in [|R|](d)) { (c_0, dots, c_n, c) mapsto z | B((c_0, dots, c_n)) = z and [|e|](t) = c }
+  \
+
+[|Filter(R, e)|](d) &=&&
+  { #err | #err in [|R|](d) } union \ &&&
+    union.big_(B in [|R|](d)) { #err | t in dom(B) and [|e|](t) = err} union \ &&&
+    union.big_(B in [|R|](d)) { t mapsto z | B(t) = z and [|e|](t) = #t }
+  \
+
+[|Project(R, harpoon(i_0 dots i_j))|](d) &=&&
+  { #err | #err in [|R|](d) } union \ &&&
+  union.big_(B in [|R|](d)) { #NoSuchColumn | (c_0, dots, c_n) in dom(B) and exists k, i_k > n } union \ &&&
+  union.big_(B in [|R|](d)) { (c_(i_0), dots, c_(i_j)) mapsto z | B((c_0, dots, c_n)) = z } } \
+
+[|FlatMap(R, f_t)|](d) &=&&
+  { #err | #err in [|R|](d) } union \ &&&
+  union.big_(B in [|R|](d)) { #err | t in dom(B) and #err in [|f_t|](t) } union \ &&&
+  union.big_(B in [|R|](d)){ t' mapsto z * z' | B(t) = z and B' = [|f_t|](t) and B'(t') = z' }
+  \
+
+[|Join(R_1, R_2, e)|](d) &=&&
+  { #err | #err in [|R_1|](d) } union { #err | #err in [|R_2|](d) } union \ &&&
+  union.big_(B_1 in [|R_1|](d)) union.big_(B_2 in [|R_2|](d))
+    { #err | \ &&& "    "
+      B_1((c_0, dots, c_n)) = z_1)  and B_2((c_(n+1), dots, c_(n+m))) = z_2 and [|e|]((c_0,dots,c_(n+m))) = #err } \ &&&
+  union.big_(B_1 in [|R_1|](d)) union.big_(B_2 in [|R_2|](d))
+    { (c_0, dots, c_(n+m)) mapsto  z_1*z_2 | \ &&& "    "
+      B_1((c_0, dots, c_n)) = z_1 and B_2((c_(n+1), dots, c_(n+m))) = z_2 and [|e|]((c_0,dots,c_(n+m))) = #t }
+  \
+
+[|Distinct(R, harpoon(i_0 dots i_j))|](d) &=&&
+  { #err | #err in [|R|](d) } union \ &&&
+  union.big_(B in [|R|](d)) { #NoSuchColumn | (c_0, dots, c_n), in dom(B) and exists k, i_k > n} union \ &&&
+  union.big_(B in [|R|](d)) { t_i mapsto 1 | {t_0, dots, t_n} in "EqClassRepresentatives"_harpoon(i_0 dots i_j)(B) }
+  \
+
+[|Union(R_1, R_2)|](d) &=&&
+  { #err | #err in [|R_1|](d) } union { #err | #err in [|R_2|](d) } \ &&&
+  union.big_(B_1 in [|R_1|](d)) union.big_(B_2 in [|R_2|](d)) { t mapsto z_1 + z_2 | B_1(t) = z_1 and B_2(t) = z_2 }
+  \
+
+[|Negate(R)|](d) &=&&
+  { #err | #err in [|R|](d) } union
+  union.big_(B in [|R|](d)) { t mapsto -z | B(t) = z }
+  \
+
+[|Threshold(R)|](d) &=&&
+  { #err | #err in [|R|](d) } union
+  union.big_(B in [|R|](d)) { t mapsto z | B(t) = z and z > 0 }
+  \
+
 $
+],
+caption: [Relation expressions are denoted as functions from databases to sets of (sets of) rows and errors. Note that we do not assign a semantics for variables, which are substituted out at their $mono("let")$-definition site.],) <relation-semantics>
 
 = Correctness criteria for transformations
 
