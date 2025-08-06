@@ -21,6 +21,66 @@
 
  - $"TopK"$ for its weird ordering/complement issues.
 
+= Notes on SQL semantics
+
+== SQL evaluation order is under specified
+
+#quote(block:true, attribution: [ISO/IEC 9075-1:2023, Section 6.3.3.3 Rule evaluation order])[
+
+A conforming SQL-implementation is not required to perform the exact sequence of actions defined in the General Rules, provided its effect on SQL-data and schemas, on host parameters and host variable, and on SQL parameters and SQL variables is identical to the effect of that sequence. The term effectively is used to emphasize actions whose effect might be achieved in other ways by an SQL-implementation.
+
+    ...
+
+Where the precedence of operators is determined by the Formats of the ISO/IEC 9075 series or by parentheses, those operators are effectively applied in the order specified by that precedence.  Where the precedence is not determined by the Formats or by parentheses, effective evaluation of expressions is generally performed from left to right. However, it is implementation-dependent (US001) whether expressions are actually evaluated left to right, particularly when operands or operators might cause conditions to be raised or if the results of the expressions can be determined without completely evaluating all parts of the expression.
+
+]
+
+#quote(block:true, attribution: [ISO/IEC 9075-2:2016, Section 7.4 `<table expression>`])[
+
+```
+<table expression> ::=
+    <from clause>
+    [ <where clause> ]
+    [ <group by clause> ]
+    [ <having clause> ]
+```
+
+    If all optional clauses are omitted, then the result of the `<table expression>` is the same as the result of the `<from clause>`. Otherwise, each specified clause is applied to the result of the previously specified clause and the result of the `<table expression>` is the result of the application of the last specified clause.
+]
+
+#quote(block:true, attribution: [ISO/IEC 9075-2:2016, Section 4.35.2 Status parameters])[
+
+    Exception conditions or completion conditions may be raised during the execution of an `<SQL procedure statement>`. One of the conditions becomes the active condition when the `<SQL procedure statement>` terminates.
+
+    ...
+
+    For the purpose of choosing status parameter values to be returned, exception conditions for transaction rollback have precedence over exception conditions for statement failure. Similarly, the completion condition 'no data' has precedence over the completion condition 'warning', which has precedence over the completion condition 'successful completion'. All exception conditions have precedence over all completion conditions. The values assigned to SQLSTATE shall obey these precedence requirements.
+
+]
+
+In general (a) optimizers may do what they like that are "effectively
+the same" as (b) a fairly fixed specification of evaluation order that
+(c) seems to require eager propagation of errors (but multiple
+plausible evaluation orders).
+
+== Plan of attack
+
+- Extend #cite(<Guagliardo2017sql>, form: "prose") to support
+  errors. NB their semantics is deterministic.
+    - Introducing failing operations on its own will not introduce
+      nondeterminism.
+    - Introducing arbitrary evaluation order will _also_ not introduce
+      nondeterminism---since there are no effects and the underlying
+      operations are deterministic.
+    - Introducing _both_ failing operations and arbitrary evaluation
+      order will induce nondeterminism: a failure may or may not occur
+      due to evaluation order.
+- Correctness becomes more general: transforms need not refine the
+  semantics of their inputs, but simply stay within the guardrails of
+  the original term.
+
+*Candidate correctness criterion.* A relation expression $R$ _implements_ a SQL query $Q$ if $[|R|](d) subset.eq [|Q|](d)$ for all databases $d$. A transform $psi : "Relations" arrow "Relations"$ is _sound_ when for all queries $Q$ and relation expressions $R$, if $R$ implements $Q$, then $psi(R)$ implements $Q$, i.e., for all databases $d$, if $[|R|](d) subset.eq [|Q|](d)$ then $[|psi(R)|](d) subset.eq [|Q|}(d)$.
+
 = Syntax
 
 == Values
@@ -330,3 +390,5 @@ Sound transformations are exactly refinements: transformations that may narrow b
 We say that scalar-expression transform $phi : "Scalars" arrow "Scalars"$ is _sound_ when for all scalar expressions $e$ and rows $t$, $[|phi(e)|](t) subset.eq [|e|](t)$.
 
 Similarly, a relation-expression transformation $psi : "Relations" arrow "Relations"$ is _sound_ when for all relation expressions $R$ and databases $d$, $[|psi(R)|](d) subset.eq [|R|](d)$.
+
+#bibliography("mir-semantics.bib", style: "ieee")
