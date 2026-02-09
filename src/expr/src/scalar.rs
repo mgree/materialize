@@ -1304,9 +1304,7 @@ impl MirScalarExpr {
                                 Err(err) => {
                                     *e = MirScalarExpr::Literal(
                                         Err(err.clone()),
-                                        then.typ(column_types)
-                                            .sql_union(&els.typ(column_types))
-                                            .unwrap(),
+                                        then.typ(column_types).union(&els.typ(column_types)),
                                     )
                                 }
                                 _ => unreachable!(),
@@ -1979,7 +1977,7 @@ impl MirScalarExpr {
             MirScalarExpr::If { cond: _, then, els } => {
                 let then_type = then.typ(column_types);
                 let else_type = els.typ(column_types);
-                then_type.sql_union(&else_type).unwrap()
+                then_type.union(&else_type)
             }
         }
     }

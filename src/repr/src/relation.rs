@@ -142,6 +142,24 @@ impl SqlColumnType {
         }
     }
 
+    pub fn try_union(&self, other: &Self) -> Result<Self, anyhow::Error> {
+        self.sql_union(other).or_else(|e| {
+            ::tracing::error!("repr type error: sql_union({self:?}, {other:?}): {e}");
+
+            let repr_self = ReprColumnType::from(self);
+            let repr_other = ReprColumnType::from(other);
+            repr_self
+                .union(&repr_other)
+                .map(|typ| SqlColumnType::from_repr(&typ))
+        })
+    }
+
+    pub fn union(&self, other: &Self) -> Self {
+        self.try_union(other).unwrap_or_else(|e| {
+            panic!("repr type error: after sql_union({self:?}, {other:?}) error: {e}")
+        })
+    }
+
     /// Consumes this `SqlColumnType` and returns a new `SqlColumnType` with its
     /// nullability set to the specified boolean.
     pub fn nullable(mut self, nullable: bool) -> Self {
