@@ -66,7 +66,7 @@ impl SqlColumnType {
         self.nullable = backport_typ.nullable;
     }
 
-    pub fn union(&self, other: &Self) -> Result<Self, anyhow::Error> {
+    pub fn sql_union(&self, other: &Self) -> Result<Self, anyhow::Error> {
         match (&self.scalar_type, &other.scalar_type) {
             (scalar_type, other_scalar_type) if scalar_type == other_scalar_type => {
                 Ok(SqlColumnType {
@@ -113,7 +113,7 @@ impl SqlColumnType {
                             other.scalar_type
                         );
                     } else {
-                        let union_column_type = typ.union(other_typ)?;
+                        let union_column_type = typ.sql_union(other_typ)?;
                         union_fields.push((name.clone(), union_column_type));
                     };
                 }

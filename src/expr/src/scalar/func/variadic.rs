@@ -1347,7 +1347,7 @@ impl VariadicFunc {
         match self {
             Greatest | Least => input_types
                 .into_iter()
-                .reduce(|l, r| l.union(&r).unwrap())
+                .reduce(|l, r| l.sql_union(&r).unwrap())
                 .unwrap(),
             Coalesce => {
                 // Note that the parser doesn't allow empty argument lists for variadic functions
@@ -1356,7 +1356,7 @@ impl VariadicFunc {
                 let nullable = input_types.iter().all(|typ| typ.nullable);
                 input_types
                     .into_iter()
-                    .reduce(|l, r| l.union(&r).unwrap())
+                    .reduce(|l, r| l.sql_union(&r).unwrap())
                     .unwrap()
                     .nullable(nullable)
             }
