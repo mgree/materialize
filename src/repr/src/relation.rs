@@ -60,12 +60,20 @@ fn return_true() -> bool {
 }
 
 impl SqlColumnType {
+    /// Backports nullability information from `backport_typ` into `self`,
+    /// affecting the outer `.nullable` field but also record fields deeper
+    /// into the type.
     pub fn backport_nullability(&mut self, backport_typ: &SqlColumnType) {
         self.scalar_type
             .backport_nullability(&backport_typ.scalar_type);
         self.nullable = backport_typ.nullable;
     }
 
+    /// Unions two [`SqlColumnType`]s.
+    ///
+    /// Will return an error if the underlying scalar types are SQL-incompatible,
+    /// e.g., unioning a `Text` and a `Int32`... or, more surprisingly, unioning
+    /// a `Text` and a `VarChar`.
     pub fn sql_union(&self, other: &Self) -> Result<Self, anyhow::Error> {
         match (&self.scalar_type, &other.scalar_type) {
             (scalar_type, other_scalar_type) if scalar_type == other_scalar_type => {
