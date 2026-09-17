@@ -814,6 +814,25 @@ NaN
 query error precision for type numeric must be between 1 and 39
 SELECT 0.2::numeric(40,1);
 
+# A constant expression folds as a whole, so the scale a cast establishes
+# reaches scale-sensitive consumers such as the text cast. The same expression
+# inside a view takes a different optimization path and must agree.
+query T
+SELECT 1.5::numeric(5,2)::text
+----
+1.50
+
+statement ok
+CREATE VIEW scaled_text AS SELECT 1.5::numeric(5,2)::text AS c
+
+query T
+SELECT c FROM scaled_text
+----
+1.50
+
+statement ok
+DROP VIEW scaled_text
+
 query error scale for type numeric must be between 0 and precision 39
 SELECT 0.2::numeric(39,40);
 
